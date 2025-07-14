@@ -25,7 +25,7 @@ def load_mimic3_data(mimic_3data, nrows):
             continue
         # try and read and process other files that are found
         try:
-            df = pd.read_csv(file_path, compression='gzip', nrows=nrows)
+            df = pd.read_csv(file_path, compression='gzip', nrows=nrows, usecols=sort_cols + [group_col])
             # check if dataframe is empty
             if df.empty:
                 print(f"Empty DataFrame: {file_path}")
