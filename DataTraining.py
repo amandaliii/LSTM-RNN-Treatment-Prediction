@@ -9,7 +9,7 @@ import pandas as pd
 # load dataset from dataprocessing
 mimic_data_dir = "/Users/amandali/Downloads/Mimic III"
 
-result = load_mimic3_data(mimic_data_dir, nrows=100000)
+result = load_mimic3_data(mimic_data_dir, nrows=500000)
 
 # Flatten all sequences across all HADM_IDs into one list of category sequences
 def extract_sequences_with_hadm_ids(data):
@@ -70,7 +70,7 @@ class LSTMModel(nn.Module):
         return out
 
 # train the model
-def train_model(model, dataloader, epochs=5, lr=1e-3):
+def train_model(model, dataloader, epochs, lr=1e-3):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     model = model.to(device)
     loss_fn = nn.CrossEntropyLoss()
@@ -90,12 +90,19 @@ def train_model(model, dataloader, epochs=5, lr=1e-3):
         print(f"Epoch {epoch+1} - Loss: {total_loss:.4f}")
 
 # predict the next term
-def predict_next(model, input_seq, item2idx, idx2item, max_len=20):
+def predict_next(model, input_seq, item2idx, idx2item, max_len=None):
     model.eval()
     device = next(model.parameters()).device
-    input_ids = [item2idx.get(i, item2idx['<UNK>']) for i in input_seq][-max_len:]
+    input_ids = [item2idx.get(i, item2idx['<UNK>']) for i in input_seq]
+
+    if max_len is None:
+        max_len = len(input_ids)
+
+    input_ids = input_ids[-max_len:]  # Still trim if needed
+
     if len(input_ids) < max_len:
         input_ids = [0] * (max_len - len(input_ids)) + input_ids
+
     input_tensor = torch.tensor([input_ids]).to(device)
     with torch.no_grad():
         logits = model(input_tensor)
@@ -112,32 +119,43 @@ loader = DataLoader(dataset, batch_size=64, shuffle=True)
 model = LSTMModel(vocab_size=len(item2idx), embed_size=64, hidden_size=128)
 train_model(model, loader, epochs=5)
 
-# store into csv/excel for future reference
+# store predictions
 prediction_rows = []
 
+# number of examples to show
+num_hadms = 20
 
-# Try prediction
+# number of prediction runs
+NUM_RUNS = 5
+
+# run the prediction
 print("\n=== HADM_ID + Category-wise Predictions ===\n")
-
-N = 3  # number of examples to show
-
-# Shuffle to show variety
-random.shuffle(sequence_tuples)
-
-# Repeat the prediction N times
-NUM_RUNS = 3
-
 for run in range(1, NUM_RUNS + 1):
     print(f"\nRun {run} Predictions...\n")
+    model = LSTMModel(vocab_size=len(item2idx), embed_size=64, hidden_size=128)
+    train_model(model, loader, epochs=10)
 
-    for hadm_id, categories_dict in result.items():
+    # Get all unique HADM_IDs, shuffle, and pick N unique ones
+    # filter HADM_IDs to only those with at least one category with ≥ 2 items
+    valid_hadm_ids = [
+        hadm_id for hadm_id, category_dict in result.items()
+        if any(len(items) >= 2 for items in category_dict.values())
+    ]
+
+    random.shuffle(valid_hadm_ids)
+    hadm_ids_to_process = valid_hadm_ids[:num_hadms]  # use only top N eligible HADM_IDs
+
+    print(f"[Run {run}] Using {len(hadm_ids_to_process)} valid HADM_IDs.")
+
+    for hadm_id in hadm_ids_to_process:
+        categories_dict = result[hadm_id]
+        print(f"  HADM_ID: {hadm_id}")
         for category, items in categories_dict.items():
+            print(f"    Category: {category} → Predicting next item from sequence of length {len(items)}...")
             if len(items) < 2:
-                continue  # not enough data
-
-            input_seq = items[:5]  # fixed input, or randomize later if needed
-            predicted_next = predict_next(model, input_seq, item2idx, idx2item)
-
+                continue
+            input_seq = items[:]
+            predicted_next = predict_next(model, items, item2idx, idx2item, max_len=len(items))
             prediction_rows.append({
                 "Run": run,
                 "HADM_ID": hadm_id,
@@ -147,5 +165,11 @@ for run in range(1, NUM_RUNS + 1):
             })
 
 df = pd.DataFrame(prediction_rows)
+print("\nTotal predictions stored:", len(prediction_rows))
+print(pd.DataFrame(prediction_rows).head(10))  # See example rows
+
+unique_ids = set([row["HADM_ID"] for row in prediction_rows])
+print(f"\nTotal unique HADM_IDs predicted across all runs: {len(unique_ids)}")
+
 df.to_excel("mimic3_predictions.xlsx", index=False)
 print("Predictions saved to mimic3_predictions.xlsx")
