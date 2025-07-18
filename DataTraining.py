@@ -4,6 +4,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import random
+import pandas as pd
 
 # load dataset from dataprocessing
 mimic_data_dir = "/Users/amandali/Downloads/Mimic III"
@@ -111,6 +112,10 @@ loader = DataLoader(dataset, batch_size=64, shuffle=True)
 model = LSTMModel(vocab_size=len(item2idx), embed_size=64, hidden_size=128)
 train_model(model, loader, epochs=5)
 
+# store into csv/excel for future reference
+prediction_rows = []
+
+
 # Try prediction
 print("\n=== HADM_ID + Category-wise Predictions ===\n")
 
@@ -119,14 +124,28 @@ N = 3  # number of examples to show
 # Shuffle to show variety
 random.shuffle(sequence_tuples)
 
-for hadm_id, categories_dict in result.items():
-    print(f"\nPredictions for HADM_ID: {hadm_id}")
-    for category, items in categories_dict.items():
-        if len(items) < 2:
-            continue  # Not enough data to predict
-        # Use last N items as input (e.g. N=5, or all but last if you want to leave one for 'ground truth')
-        input_seq = items[:5]  # or items[:-1] if predicting last item
-        predicted_next = predict_next(model, input_seq, item2idx, idx2item)
-        print(f"  Category: {category}")
-        print(f"    Input sequence: {input_seq}")
-        print(f"    Predicted next item: {predicted_next}")
+# Repeat the prediction N times
+NUM_RUNS = 3
+
+for run in range(1, NUM_RUNS + 1):
+    print(f"\nRun {run} Predictions...\n")
+
+    for hadm_id, categories_dict in result.items():
+        for category, items in categories_dict.items():
+            if len(items) < 2:
+                continue  # not enough data
+
+            input_seq = items[:5]  # fixed input, or randomize later if needed
+            predicted_next = predict_next(model, input_seq, item2idx, idx2item)
+
+            prediction_rows.append({
+                "Run": run,
+                "HADM_ID": hadm_id,
+                "Category": category,
+                "Input_Sequence": ", ".join(map(str, input_seq)),
+                "Predicted_Next_Item": predicted_next
+            })
+
+df = pd.DataFrame(prediction_rows)
+df.to_excel("mimic3_predictions.xlsx", index=False)
+print("Predictions saved to mimic3_predictions.xlsx")
