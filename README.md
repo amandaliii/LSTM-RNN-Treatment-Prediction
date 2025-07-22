@@ -1,2 +1,2 @@
 # ICU-Patient-Treatment-Prediction
-Model to predict ICU patient treatment
+LSTM RNN (Long short term memory recurrent neural network) to predict ICU patient treatment
