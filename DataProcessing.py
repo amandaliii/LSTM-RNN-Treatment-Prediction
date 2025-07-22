@@ -77,7 +77,7 @@ def load_mimic3_data(mimic_3data, nrows):
 mimic_data_dir = '/Users/amandali/Downloads/Mimic III'
 
 try:
-    result = load_mimic3_data(mimic_data_dir, nrows=100000)
+    result = load_mimic3_data(mimic_data_dir, nrows=500000)
     print(json.dumps(result, indent=2))
 except Exception as e:
     print(f"Error in load mimic3 data: {e}")
